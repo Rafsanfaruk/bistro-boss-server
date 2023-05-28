@@ -10,9 +10,8 @@ app.use(express.json());
 
 // mongodb start
 
-const { MongoClient, ServerApiVersion } = require("mongodb");
-const uri =
-  `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.luzjykj.mongodb.net/?retryWrites=true&w=majority`;
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.luzjykj.mongodb.net/?retryWrites=true&w=majority`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
@@ -29,12 +28,50 @@ async function run() {
     await client.connect();
 
     const menuCollection = client.db("bistroDb").collection("menu");
-    
-    app.get('/menu',async( req, res ) => {
-        const result = await menuCollection.find().toArray();
-        res.send(result);
-    })
+    const reviewCollection = client.db("bistroDb").collection("reviews");
+    const cartCollection = client.db("bistroDb").collection("carts");
 
+    // menu data loaded
+
+    app.get("/menu", async (req, res) => {
+      const result = await menuCollection.find().toArray();
+      res.send(result);
+    });
+    // review data loaded
+
+    app.get("/reviews", async (req, res) => {
+      const result = await reviewCollection.find().toArray();
+      res.send(result);
+    });
+
+    // cart collection api
+
+    app.get('/carts', async (req, res) => {
+      const email = req.query.email;
+
+      if (!email) {
+        res.send([]);
+      }
+      const query = { email: email };
+      const result = await cartCollection.find(query).toArray();
+      res.send(result);
+    });
+
+
+
+    app.post("/carts", async (req, res) => {
+      const item = req.body;
+      // console.log(item);
+      const result = await cartCollection.insertOne(item);
+      res.send(result);
+    });
+
+    app.delete('/carts/:id',async(req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id)};
+      const result =await cartCollection.deleteOne(query);
+      res.send(result);
+    })
 
 
 
@@ -59,3 +96,25 @@ app.get("/", (req, res) => {
 app.listen(port, () => {
   console.log(`Bistro boss listening on port: ${port}`);
 });
+
+/**
+ * ----------------------------
+ *        Naming convention
+ * ----------------------------
+ *
+ * users : userCollection
+ *    get
+ * app.get('/users')
+ * app.get('/user/:id')
+ *
+ *    create
+ * app.post('/users')
+ *
+ *    update
+ * app.patch('/users/:id')
+ * app.put('/users/:id')
+ *
+ *    delete
+ * app.delete('/users/:id')
+ *
+ * */
