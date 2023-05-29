@@ -1,6 +1,7 @@
 const express = require("express");
 const app = express();
 const cors = require("cors");
+const  jwt = require('jsonwebtoken');
 require("dotenv").config();
 const port = process.env.PORT || 5000;
 
@@ -27,17 +28,60 @@ async function run() {
     // Connect the client to the server	(optional starting in v4.7)
     await client.connect();
 
+    const usersCollection = client.db("bistroDb").collection("users");
     const menuCollection = client.db("bistroDb").collection("menu");
     const reviewCollection = client.db("bistroDb").collection("reviews");
     const cartCollection = client.db("bistroDb").collection("carts");
 
-    // menu data loaded
+    // user related api methods
+    app.get('/users',async (req, res) => {
+      const result =await usersCollection.find().toArray();
+      res.send(result);
+    })
+
+    app.post("/users", async (req, res) => {
+      const user = req.body;
+      // console.log(user);
+      const query = { email: user.email };
+      const existingUser = await usersCollection.findOne(query);
+      // console.log("existing User",existingUser);
+      if (existingUser) {
+        return res.send({ message: "User already exists" });
+      }
+      const result = await usersCollection.insertOne(user);
+      res.send(result);
+    });
+
+    // Admin
+
+    app.patch('/users/admin/:id',async(req ,res) =>{
+      const id = req.params.id;
+      console.log(id);
+      const filter ={_id : new ObjectId(id)};
+
+      const updateDoc = {
+        $set: {
+          role: 'admin'
+        },
+      };
+      const result =await usersCollection.updateOne(filter,updateDoc);
+      res.send(result);
+  
+    })
+
+
+
+
+
+
+
+    // menu data loaded api
 
     app.get("/menu", async (req, res) => {
       const result = await menuCollection.find().toArray();
       res.send(result);
     });
-    // review data loaded
+    // review data loaded api
 
     app.get("/reviews", async (req, res) => {
       const result = await reviewCollection.find().toArray();
@@ -46,7 +90,7 @@ async function run() {
 
     // cart collection api
 
-    app.get('/carts', async (req, res) => {
+    app.get("/carts", async (req, res) => {
       const email = req.query.email;
 
       if (!email) {
@@ -57,8 +101,6 @@ async function run() {
       res.send(result);
     });
 
-
-
     app.post("/carts", async (req, res) => {
       const item = req.body;
       // console.log(item);
@@ -66,14 +108,12 @@ async function run() {
       res.send(result);
     });
 
-    app.delete('/carts/:id',async(req, res) => {
+    app.delete("/carts/:id", async (req, res) => {
       const id = req.params.id;
-      const query = { _id: new ObjectId(id)};
-      const result =await cartCollection.deleteOne(query);
+      const query = { _id: new ObjectId(id) };
+      const result = await cartCollection.deleteOne(query);
       res.send(result);
-    })
-
-
+    });
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
