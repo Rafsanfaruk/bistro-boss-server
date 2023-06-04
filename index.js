@@ -1,33 +1,35 @@
 const express = require("express");
 const app = express();
 const cors = require("cors");
-const  jwt = require('jsonwebtoken');
+const jwt = require("jsonwebtoken");
 require("dotenv").config();
-const stripe = require('stripe')(process.env.PAYMENT_SECRET_KEY)
+const stripe = require("stripe")(process.env.PAYMENT_SECRET_KEY);
 const port = process.env.PORT || 5000;
 
 // middleware
 app.use(cors());
 app.use(express.json());
 
-const verifyJWT =(req, res, next) => {
+const verifyJWT = (req, res, next) => {
   const authorization = req.headers.authorization;
-  if(!authorization){
-    return res.status(401).send({error : true, message : 'Invalid authorization access'});
+  if (!authorization) {
+    return res
+      .status(401)
+      .send({ error: true, message: "Invalid authorization access" });
   }
-//  bearer token
-  const token =authorization.split(' ')[1];
+  //  bearer token
+  const token = authorization.split(" ")[1];
 
-  jwt.verify(token , process.env.ACCESS_TOKEN_SECRET, (err ,decoded) =>{
-    if(err){
-      return res.status(401).send({error : true, message : 'Invalid authorization access'})
+  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+    if (err) {
+      return res
+        .status(401)
+        .send({ error: true, message: "Invalid authorization access" });
     }
     req.decoded = decoded;
     next();
-  })
-
-}
-
+  });
+};
 
 // mongodb start
 
@@ -52,43 +54,44 @@ async function run() {
     const menuCollection = client.db("bistroDb").collection("menu");
     const reviewCollection = client.db("bistroDb").collection("reviews");
     const cartCollection = client.db("bistroDb").collection("carts");
+    const paymentCollection = client.db("bistroDb").collection("payments");
 
-    // jwt token create 
+    // jwt token create
 
-    app.post('/jwt',(req , res) =>{
-      const user =req.body;
-      const token =jwt.sign(user ,process.env.ACCESS_TOKEN_SECRET,{expiresIn : '1h'})
-      res.send({token})
+    app.post("/jwt", (req, res) => {
+      const user = req.body;
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
+        expiresIn: "1h",
+      });
+      res.send({ token });
+    });
 
-    })
+    //  Warning : use verifyJWT before using verifyAdmin
 
-    //  Warning : use verifyJWT before using verifyAdmin 
-
-    const verifyAdmin =async(req, res, next)=> {
-      const email =req.decoded.email;
-      const query = { email: email}
-      const user =await usersCollection.findOne(query);
-      if(user?.role !== 'admin'){
-        return res.status(403).send({error : true, message: 'forbidden message'});
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.decoded.email;
+      const query = { email: email };
+      const user = await usersCollection.findOne(query);
+      if (user?.role !== "admin") {
+        return res
+          .status(403)
+          .send({ error: true, message: "forbidden message" });
       }
       next();
-    }
-
-
+    };
 
     /**
      * 0. do not show secure links to those who should be allowed to access
      * 1.use jwt token: verifyJWT
      * 2. use verifyAdmin middleware
-     * */ 
+     * */
 
     // user related api methods
 
-
-    app.get('/users',verifyJWT, verifyAdmin, async (req, res) => {
-      const result =await usersCollection.find().toArray();
+    app.get("/users", verifyJWT, verifyAdmin, async (req, res) => {
+      const result = await usersCollection.find().toArray();
       res.send(result);
-    })
+    });
 
     app.post("/users", async (req, res) => {
       const user = req.body;
@@ -107,43 +110,34 @@ async function run() {
 
     // security layer : verifyJWT
     // email same
-    // check admin 
+    // check admin
 
-    app.get('/users/admin/:email', verifyJWT, async (req, res) => {
-      const email =req.params.email;
+    app.get("/users/admin/:email", verifyJWT, async (req, res) => {
+      const email = req.params.email;
 
-      if(req.decoded.email !== email) {
-        res.send({admin : false})
+      if (req.decoded.email !== email) {
+        res.send({ admin: false });
       }
 
-      const query ={ email : email };
+      const query = { email: email };
       const user = await usersCollection.findOne(query);
-      const result ={admin : user?.role === 'admin'}
+      const result = { admin: user?.role === "admin" };
       res.send(result);
-    })
+    });
 
-
-
-    app.patch('/users/admin/:id',async(req ,res) =>{
+    app.patch("/users/admin/:id", async (req, res) => {
       const id = req.params.id;
       console.log(id);
-      const filter ={_id : new ObjectId(id)};
+      const filter = { _id: new ObjectId(id) };
 
       const updateDoc = {
         $set: {
-          role: 'admin'
+          role: "admin",
         },
       };
-      const result =await usersCollection.updateOne(filter,updateDoc);
+      const result = await usersCollection.updateOne(filter, updateDoc);
       res.send(result);
-  
-    })
-
-
-
-
-
-
+    });
 
     // menu data loaded api
 
@@ -152,23 +146,18 @@ async function run() {
       res.send(result);
     });
 
-
-    app.post ('/menu', verifyJWT,verifyAdmin, async (req, res) => {
-      const newItem =req.body;
+    app.post("/menu", verifyJWT, verifyAdmin, async (req, res) => {
+      const newItem = req.body;
       const result = await menuCollection.insertOne(newItem);
       res.send(result);
+    });
 
-    })
-
-    app.delete('/menu/:id', verifyJWT,verifyAdmin, async (req, res) => {
-      const id =req.params.id;
-      const query ={ _id: new ObjectId(id) };
+    app.delete("/menu/:id", verifyJWT, verifyAdmin, async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
       const result = await menuCollection.deleteOne(query);
       res.send(result);
-    })
-
-
-
+    });
 
     // review data loaded api
 
@@ -179,19 +168,19 @@ async function run() {
 
     // cart collection api
 
-    app.get("/carts",verifyJWT, async (req, res) => {
+    app.get("/carts", verifyJWT, async (req, res) => {
       const email = req.query.email;
 
       if (!email) {
         res.send([]);
       }
 
-      const decodedEmail =req.decoded.email;
-      if(email !== decodedEmail){
-        return res.status(403).send({error : true, message : 'forbidden access'});
+      const decodedEmail = req.decoded.email;
+      if (email !== decodedEmail) {
+        return res
+          .status(403)
+          .send({ error: true, message: "forbidden access" });
       }
-
-
 
       const query = { email: email };
       const result = await cartCollection.find(query).toArray();
@@ -212,26 +201,39 @@ async function run() {
       res.send(result);
     });
 
-    //  Create payment intent 
+    //  Create payment intent
 
-    app.post('/create-payment-intent', async (req, res) => {
-      const {price} =req.body;
-      const amount =price*100;
-      const paymentIntent =await stripe.paymentIntents.create({
+    app.post("/create-payment-intent", verifyJWT, async (req, res) => {
+      const { price } = req.body;
+      const amount = price * 100;
+
+      // console.log(price,amount);
+
+      const paymentIntent = await stripe.paymentIntents.create({
         amount: amount,
-        currency: 'USD',
-        payment_method_types:['card']
+        currency: "USD",
+        payment_method_types: ["card"],
       });
-      
+
       res.send({
         clientSecret: paymentIntent.client_secret,
-      })
+      });
+    });
 
+
+
+    // payment related api 
+
+    app.post('/payments', verifyJWT, async(req,res) => {
+      const payment =req.body;
+      const insetResult  =await paymentCollection.insertOne(payment);
+
+      const query ={_id: { $in: payment.cartItems.map(id => new ObjectId(id))}}
+      const deleteResult =await cartCollection.deleteMany(query);
+      
+
+      res.send({insetResult,deleteResult});
     })
-
-
-
-
 
 
 
