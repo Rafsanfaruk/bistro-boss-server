@@ -205,7 +205,7 @@ async function run() {
 
     app.post("/create-payment-intent", verifyJWT, async (req, res) => {
       const { price } = req.body;
-      const amount = price * 100;
+      const amount = parseInt(price * 100);
 
       // console.log(price,amount);
 
@@ -220,21 +220,95 @@ async function run() {
       });
     });
 
+    // payment related api
 
+    app.post("/payments", verifyJWT, async (req, res) => {
+      const payment = req.body;
+      const insetResult = await paymentCollection.insertOne(payment);
 
-    // payment related api 
+      const query = {
+        _id: { $in: payment.cartItems.map((id) => new ObjectId(id)) },
+      };
+      const deleteResult = await cartCollection.deleteMany(query);
 
-    app.post('/payments', verifyJWT, async(req,res) => {
-      const payment =req.body;
-      const insetResult  =await paymentCollection.insertOne(payment);
+      res.send({ insetResult, deleteResult });
+    });
 
-      const query ={_id: { $in: payment.cartItems.map(id => new ObjectId(id))}}
-      const deleteResult =await cartCollection.deleteMany(query);
-      
+    app.get("/admin-stats",verifyJWT,verifyAdmin, async (req, res) => {
+      const users = await usersCollection.estimatedDocumentCount();
+      const products = await menuCollection.estimatedDocumentCount();
+      const orders = await paymentCollection.estimatedDocumentCount();
 
-      res.send({insetResult,deleteResult});
+      // best way to get sum of a price field is to use group and sum operators
+      /**
+       * await paymentCollection.aggregate([
+            {
+              $group: {
+                _id: null,
+                total: { $sum: '$price' }
+              }
+            }
+          ]).toArray()
+       * */
+      const payments =await paymentCollection.find().toArray();
+      const revenue =payments.reduce((sum,payment) =>sum+payment.price,0)
+
+      res.send({
+        revenue,
+        users,
+        products,
+        orders,
+      });
+    });
+
+    /**
+     * ---------------------------
+     *      second best solution
+     * ---------------------------
+     * 1. load all payments
+     * 2. for each payment, get the menuItems array
+     * 3. for each item in the menuItems array get the menuItems from the menu collection
+     * 4. put them in an array : allOrdered Items 
+     * 5. separate all orderedItems by category using filter
+     * 6. now get the quantity by using length : pizzas.length
+     * 7. for each category use reduce to get the total amount spent on this category
+     * 
+     * */ 
+
+    app.get('/order-stats', verifyJWT,verifyAdmin,  async(req, res) =>{
+      const pipeline = [
+        {
+          $lookup: {
+            from: 'menu',
+            localField: 'menuItems',
+            foreignField: '_id',
+            as: 'menuItemsData'
+          }
+        },
+        {
+          $unwind: '$menuItemsData'
+        },
+        {
+          $group: {
+            _id: '$menuItemsData.category',
+            count: { $sum: 1 },
+            total: { $sum: '$menuItemsData.price' }
+          }
+        },
+        {
+          $project: {
+            category: '$_id',
+            count: 1,
+            total: { $round: ['$total', 2] },
+            _id: 0
+          }
+        }
+      ];
+
+      const result = await paymentCollection.aggregate(pipeline).toArray()
+      res.send(result)
+
     })
-
 
 
     // Send a ping to confirm a successful connection
